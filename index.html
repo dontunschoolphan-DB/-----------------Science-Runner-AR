@@ -1,0 +1,1410 @@
+<!DOCTYPE html>
+<html lang="th">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<title>Science Runner AR - กระบวนการทางวิทยาศาสตร์</title>
+<script src="https://cdn.tailwindcss.com"></script>
+<script src="https://cdn.jsdelivr.net/npm/@mediapipe/hands/hands.js" crossorigin="anonymous"></script>
+<script src="https://cdn.jsdelivr.net/npm/@mediapipe/camera_utils/camera_utils.js" crossorigin="anonymous"></script>
+<script src="https://cdn.jsdelivr.net/npm/@mediapipe/drawing_utils/drawing_utils.js" crossorigin="anonymous"></script>
+<style>
+  /* ===== FONTS & BASE ===== */
+  @import url('https://fonts.googleapis.com/css2?family=Noto+Sans+Thai:wght@400;600;700;900&family=Orbitron:wght@700;900&display=swap');
+  *{box-sizing:border-box;margin:0;padding:0;-webkit-tap-highlight-color:transparent}
+  :root{
+    --c-bg:#0a0a1a;--c-lane:#1a1a3e;--c-accent:#00f5d4;--c-yellow:#ffd60a;
+    --c-red:#ff3860;--c-purple:#8b5cf6;--c-green:#10b981;--c-orange:#f97316;
+    --glass:rgba(255,255,255,0.08);--glass-border:rgba(255,255,255,0.15);
+  }
+  body{font-family:'Noto Sans Thai',sans-serif;background:var(--c-bg);color:#fff;
+    overflow:hidden;width:100vw;height:100dvh;user-select:none;touch-action:none}
+  canvas{display:block}
+  .font-game{font-family:'Orbitron',sans-serif}
+  /* ===== GLASS CARD ===== */
+  .glass{background:var(--glass);backdrop-filter:blur(12px);
+    border:1px solid var(--glass-border);border-radius:16px}
+  /* ===== SCREENS ===== */
+  .screen{position:absolute;inset:0;display:none;flex-direction:column;
+    align-items:center;justify-content:center;z-index:50}
+  .screen.active{display:flex}
+  /* ===== ANIMATIONS ===== */
+  @keyframes float{0%,100%{transform:translateY(0)}50%{transform:translateY(-10px)}}
+  @keyframes pulse-glow{0%,100%{box-shadow:0 0 20px var(--c-accent)}
+    50%{box-shadow:0 0 40px var(--c-accent),0 0 60px var(--c-accent)}}
+  @keyframes spin-slow{from{transform:rotate(0deg)}to{transform:rotate(360deg)}}
+  @keyframes star-fall{0%{transform:translateY(-20px);opacity:0}
+    50%{opacity:1}100%{transform:translateY(20px);opacity:0}}
+  @keyframes shake{0%,100%{transform:translateX(0)}
+    25%{transform:translateX(-8px)}75%{transform:translateX(8px)}}
+  @keyframes bounce-in{0%{transform:scale(0)}60%{transform:scale(1.2)}100%{transform:scale(1)}}
+  @keyframes slide-up{from{transform:translateY(40px);opacity:0}to{transform:translateY(0);opacity:1}}
+  @keyframes neon-pulse{0%,100%{text-shadow:0 0 10px var(--c-accent),0 0 30px var(--c-accent)}
+    50%{text-shadow:0 0 20px var(--c-accent),0 0 60px var(--c-accent),0 0 100px var(--c-accent)}}
+  .float-anim{animation:float 3s ease-in-out infinite}
+  .pulse-glow{animation:pulse-glow 2s ease-in-out infinite}
+  .neon-text{animation:neon-pulse 2s ease-in-out infinite}
+  .bounce-in{animation:bounce-in 0.4s ease-out}
+  .slide-up{animation:slide-up 0.4s ease-out}
+  /* ===== STARS BG ===== */
+  .stars{position:fixed;inset:0;pointer-events:none;overflow:hidden;z-index:0}
+  .star{position:absolute;width:2px;height:2px;background:#fff;border-radius:50%;
+    animation:star-fall 3s linear infinite}
+  /* ===== HUD ===== */
+  #hud{position:absolute;top:0;left:0;right:0;z-index:30;pointer-events:none;
+    padding:8px 12px}
+  /* ===== AR OVERLAY ===== */
+  #ar-container{position:absolute;bottom:0;right:0;z-index:25;
+    width:180px;height:135px;border-radius:12px;overflow:hidden;
+    border:2px solid var(--glass-border);opacity:0.85}
+  #ar-video{position:absolute;inset:0;width:100%;height:100%;object-fit:cover;
+    transform:scaleX(-1)}
+  #ar-canvas{position:absolute;inset:0;width:100%;height:100%;transform:scaleX(-1)}
+  /* ===== QUIZ MODAL ===== */
+  #quiz-modal{position:absolute;inset:0;z-index:60;display:none;
+    align-items:center;justify-content:center;background:rgba(0,0,0,0.75);
+    backdrop-filter:blur(8px)}
+  #quiz-modal.active{display:flex}
+  /* ===== GAME CANVAS ===== */
+  #game-canvas{position:absolute;inset:0;z-index:10}
+  /* ===== BTN ===== */
+  .btn-primary{background:linear-gradient(135deg,var(--c-accent),var(--c-purple));
+    color:#000;font-weight:900;padding:14px 32px;border-radius:50px;border:none;
+    cursor:pointer;font-size:1.1rem;font-family:'Noto Sans Thai',sans-serif;
+    transition:all 0.2s;box-shadow:0 4px 20px rgba(0,245,212,0.4)}
+  .btn-primary:hover{transform:scale(1.05);box-shadow:0 6px 30px rgba(0,245,212,0.6)}
+  .btn-danger{background:linear-gradient(135deg,var(--c-red),#c0392b);color:#fff}
+  .btn-secondary{background:var(--glass);border:1px solid var(--glass-border);color:#fff}
+  /* ===== HEALTH BAR ===== */
+  .health-bar{height:10px;border-radius:5px;background:rgba(255,255,255,0.1);overflow:hidden}
+  .health-fill{height:100%;border-radius:5px;
+    background:linear-gradient(90deg,var(--c-green),#84fab0);
+    transition:width 0.3s ease}
+  /* ===== QUIZ OPTIONS ===== */
+  .quiz-option{background:rgba(255,255,255,0.07);border:2px solid var(--glass-border);
+    border-radius:16px;padding:16px 20px;cursor:pointer;transition:all 0.2s;
+    font-size:1rem;text-align:left;width:100%;font-family:'Noto Sans Thai',sans-serif;color:#fff}
+  .quiz-option:hover,.quiz-option.hover{background:rgba(0,245,212,0.2);
+    border-color:var(--c-accent);transform:scale(1.02)}
+  .quiz-option.correct{background:rgba(16,185,129,0.3);border-color:var(--c-green)}
+  .quiz-option.wrong{background:rgba(255,56,96,0.3);border-color:var(--c-red)}
+  /* ===== SCROLLBAR ===== */
+  ::-webkit-scrollbar{width:4px}::-webkit-scrollbar-track{background:rgba(255,255,255,0.05)}
+  ::-webkit-scrollbar-thumb{background:var(--c-accent);border-radius:4px}
+  /* ===== RESPONSIVE ===== */
+  @media(max-width:640px){
+    #ar-container{width:120px;height:90px}
+    .quiz-option{padding:12px 14px;font-size:0.9rem}
+  }
+  /* ===== PARTICLE ===== */
+  .particle{position:absolute;pointer-events:none;border-radius:50%;
+    animation:star-fall 0.8s ease-out forwards}
+  /* ===== LEADERBOARD ===== */
+  #leaderboard-screen table{border-collapse:collapse;width:100%}
+  #leaderboard-screen td,#leaderboard-screen th{padding:10px 14px}
+  .rank-gold{color:var(--c-yellow);font-weight:900}
+  .rank-silver{color:#c0c0c0;font-weight:700}
+  .rank-bronze{color:#cd7f32;font-weight:700}
+  .self-row{background:rgba(0,245,212,0.15);border-radius:8px}
+</style>
+</head>
+<body>
+
+<!-- ===== STARS BACKGROUND ===== -->
+<div class="stars" id="stars-bg"></div>
+
+<!-- ===== GAME CANVAS ===== -->
+<canvas id="game-canvas"></canvas>
+
+<!-- ===== HUD ===== -->
+<div id="hud" style="display:none">
+  <div class="flex items-center justify-between gap-2">
+    <!-- คะแนนและด่าน -->
+    <div class="glass px-3 py-2 flex items-center gap-3">
+      <div>
+        <div class="text-xs text-gray-400">คะแนน</div>
+        <div class="font-game text-lg text-yellow-400" id="hud-score">0</div>
+      </div>
+      <div class="w-px h-8 bg-white/20"></div>
+      <div>
+        <div class="text-xs text-gray-400">ด่าน</div>
+        <div class="font-game text-lg text-cyan-400" id="hud-level">1</div>
+      </div>
+      <div class="w-px h-8 bg-white/20"></div>
+      <div>
+        <div class="text-xs text-gray-400">เหรียญ</div>
+        <div class="font-game text-lg text-yellow-300">🪙 <span id="hud-coins">0</span></div>
+      </div>
+    </div>
+    <!-- พลังชีวิต -->
+    <div class="glass px-3 py-2 flex items-center gap-2">
+      <span id="hud-hearts" class="text-lg">❤️❤️❤️</span>
+    </div>
+    <!-- ปุ่ม Pause -->
+    <button id="btn-pause" onclick="GameController.pause()" style="pointer-events:all"
+      class="glass px-3 py-2 text-xl rounded-xl">⏸️</button>
+  </div>
+  <!-- AR Status -->
+  <div class="mt-1 flex items-center gap-2">
+    <div id="ar-status" class="glass px-2 py-1 text-xs flex items-center gap-1">
+      <span id="ar-dot" class="w-2 h-2 rounded-full bg-gray-500"></span>
+      <span id="ar-text">ไม่ได้เปิดกล้อง</span>
+    </div>
+    <div id="gesture-display" class="glass px-2 py-1 text-xs text-cyan-300"></div>
+  </div>
+</div>
+
+<!-- ===== AR OVERLAY (กล้อง + Skeleton) ===== -->
+<div id="ar-container" style="display:none">
+  <video id="ar-video" autoplay playsinline muted></video>
+  <canvas id="ar-canvas"></canvas>
+</div>
+
+<!-- ==================== SCREENS ==================== -->
+
+<!-- 🏠 MAIN MENU -->
+<div class="screen active" id="menu-screen">
+  <div class="absolute inset-0 overflow-hidden">
+    <div style="position:absolute;top:10%;left:50%;transform:translateX(-50%);
+      font-size:80px;animation:float 3s ease-in-out infinite">🧪</div>
+    <div style="position:absolute;top:8%;left:10%;font-size:40px;
+      animation:float 2.5s ease-in-out infinite 0.5s">⭐</div>
+    <div style="position:absolute;top:12%;right:10%;font-size:40px;
+      animation:float 3.5s ease-in-out infinite 1s">🔬</div>
+  </div>
+  <div class="text-center z-10 px-4" style="max-width:460px;width:100%">
+    <div class="font-game text-3xl font-black neon-text mb-1" 
+      style="color:var(--c-accent)">SCIENCE RUNNER</div>
+    <div class="font-game text-lg font-bold mb-1" style="color:var(--c-yellow)">AR</div>
+    <div class="text-sm text-gray-400 mb-6">กระบวนการทางวิทยาศาสตร์ ป.2</div>
+
+    <!-- Register Form -->
+    <div class="glass p-5 mb-4 slide-up">
+      <div class="text-sm font-bold text-cyan-300 mb-3">📋 ลงทะเบียนก่อนเล่น</div>
+      <input id="inp-name" type="text" placeholder="ชื่อ-นามสกุล" maxlength="40"
+        class="w-full bg-white/10 border border-white/20 rounded-xl px-4 py-3 text-white mb-2 text-sm outline-none focus:border-cyan-400">
+      <div class="flex gap-2 mb-2">
+        <input id="inp-class" type="text" placeholder="ชั้น เช่น ป.2/1" maxlength="10"
+          class="flex-1 bg-white/10 border border-white/20 rounded-xl px-3 py-3 text-white text-sm outline-none focus:border-cyan-400">
+        <input id="inp-no" type="number" placeholder="เลขที่" min="1" max="50"
+          class="w-20 bg-white/10 border border-white/20 rounded-xl px-3 py-3 text-white text-sm outline-none focus:border-cyan-400">
+      </div>
+      <div id="reg-error" class="text-red-400 text-xs mb-2" style="display:none"></div>
+    </div>
+
+    <div class="flex flex-col gap-3">
+      <button class="btn-primary pulse-glow text-lg" onclick="GameController.startGame()">
+        🚀 เริ่มเกม!
+      </button>
+      <div class="flex gap-3">
+        <button class="btn-primary btn-secondary flex-1" onclick="showScreen('ar-tutorial-screen')">
+          🖐️ ทดสอบ AR
+        </button>
+        <button class="btn-primary btn-secondary flex-1" onclick="showScreen('leaderboard-screen');loadLeaderboard()">
+          🏆 อันดับ
+        </button>
+        <button class="btn-primary btn-secondary" onclick="showScreen('admin-login-screen')">
+          🔒
+        </button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- 🖐️ AR TUTORIAL -->
+<div class="screen" id="ar-tutorial-screen">
+  <div class="z-10 px-4 w-full" style="max-width:480px">
+    <div class="text-center mb-4">
+      <div class="font-game text-xl font-bold" style="color:var(--c-accent)">🖐️ ทดสอบท่าทาง AR</div>
+      <div class="text-sm text-gray-400">ให้ระบบเรียนรู้มือของคุณก่อนเล่น</div>
+    </div>
+    <!-- กล้องตัวอย่าง -->
+    <div class="glass p-2 mb-4" style="position:relative;aspect-ratio:4/3;overflow:hidden">
+      <video id="tutorial-video" autoplay playsinline muted 
+        style="width:100%;height:100%;object-fit:cover;transform:scaleX(-1);border-radius:12px"></video>
+      <canvas id="tutorial-canvas" 
+        style="position:absolute;inset:0;width:100%;height:100%;transform:scaleX(-1)"></canvas>
+      <div id="gesture-result" 
+        style="position:absolute;bottom:8px;left:50%;transform:translateX(-50%);
+          background:rgba(0,0,0,0.7);border-radius:24px;padding:6px 16px;
+          font-size:0.9rem;white-space:nowrap" class="text-cyan-300 font-bold">
+        รอการตรวจจับ...
+      </div>
+    </div>
+    <!-- คำอธิบายท่า -->
+    <div class="grid grid-cols-3 gap-2 mb-4">
+      <div class="glass p-3 text-center" id="gest-left">
+        <div class="text-3xl mb-1">✊</div>
+        <div class="text-xs font-bold" style="color:var(--c-accent)">กำมือ</div>
+        <div class="text-xs text-gray-400">เดินซ้าย</div>
+      </div>
+      <div class="glass p-3 text-center" id="gest-jump">
+        <div class="text-3xl mb-1">🤏</div>
+        <div class="text-xs font-bold text-yellow-400">จีบนิ้ว</div>
+        <div class="text-xs text-gray-400">กระโดด</div>
+      </div>
+      <div class="glass p-3 text-center" id="gest-right">
+        <div class="text-3xl mb-1">🖐️</div>
+        <div class="text-xs font-bold text-purple-400">กางมือ</div>
+        <div class="text-xs text-gray-400">เดินขวา</div>
+      </div>
+    </div>
+    <div class="flex gap-3">
+      <button class="btn-primary btn-secondary flex-1" onclick="showScreen('menu-screen')">
+        ← กลับ
+      </button>
+      <button class="btn-primary flex-1" onclick="GameController.startGame()">
+        เริ่มเกม! 🚀
+      </button>
+    </div>
+  </div>
+</div>
+
+<!-- ❓ QUIZ MODAL -->
+<div id="quiz-modal">
+  <div class="glass p-6 mx-4 w-full slide-up" style="max-width:480px">
+    <div class="flex items-center gap-2 mb-1">
+      <span class="text-2xl" id="quiz-level-icon">🌳</span>
+      <span class="text-sm text-gray-400" id="quiz-level-name">Level 1</span>
+    </div>
+    <div class="text-base font-bold mb-4 leading-relaxed" id="quiz-question">คำถาม</div>
+    <div class="flex flex-col gap-2" id="quiz-options"></div>
+    <!-- Hint: ใช้มือแตะ -->
+    <div class="text-center text-xs text-gray-500 mt-3">💡 แตะตัวเลือก หรือใช้มือแตะที่ป้าย</div>
+    <!-- ผลลัพธ์ -->
+    <div id="quiz-result" style="display:none" class="text-center mt-4">
+      <div class="text-4xl mb-2" id="quiz-result-icon"></div>
+      <div class="font-bold text-lg" id="quiz-result-text"></div>
+      <div class="text-sm text-gray-400 mt-1" id="quiz-result-desc"></div>
+    </div>
+  </div>
+</div>
+
+<!-- 🏁 GAME OVER -->
+<div class="screen" id="gameover-screen">
+  <div class="glass p-6 mx-4 w-full text-center" style="max-width:400px">
+    <div class="text-6xl mb-3" id="go-icon">💀</div>
+    <div class="font-game text-2xl font-black mb-1" id="go-title" style="color:var(--c-red)">GAME OVER</div>
+    <div class="text-gray-400 mb-4" id="go-sub">ลองใหม่อีกครั้งนะ!</div>
+    <div class="glass p-4 mb-4">
+      <div class="grid grid-cols-3 gap-3 text-center">
+        <div>
+          <div class="text-2xl font-black" style="color:var(--c-yellow)" id="go-score">0</div>
+          <div class="text-xs text-gray-400">คะแนน</div>
+        </div>
+        <div>
+          <div class="text-2xl font-black text-cyan-400" id="go-level">1</div>
+          <div class="text-xs text-gray-400">ด่านที่ผ่าน</div>
+        </div>
+        <div>
+          <div class="text-2xl font-black text-yellow-300" id="go-coins">0</div>
+          <div class="text-xs text-gray-400">เหรียญ</div>
+        </div>
+      </div>
+    </div>
+    <div class="flex flex-col gap-2">
+      <button class="btn-primary" onclick="GameController.startGame()">🔄 เล่นอีกครั้ง</button>
+      <button class="btn-primary btn-secondary" onclick="showScreen('leaderboard-screen');loadLeaderboard()">🏆 ดูอันดับ</button>
+      <button class="btn-primary btn-secondary" onclick="showScreen('menu-screen')">🏠 เมนูหลัก</button>
+    </div>
+  </div>
+</div>
+
+<!-- ⏸️ PAUSE -->
+<div class="screen" id="pause-screen">
+  <div class="glass p-6 mx-4 w-full text-center" style="max-width:360px">
+    <div class="text-4xl mb-2">⏸️</div>
+    <div class="font-game text-xl font-bold mb-4" style="color:var(--c-accent)">หยุดพัก</div>
+    <div class="flex flex-col gap-2">
+      <button class="btn-primary" onclick="GameController.resume()">▶️ เล่นต่อ</button>
+      <button class="btn-primary btn-secondary" onclick="GameController.quit()">🚪 ออกจากเกม</button>
+    </div>
+  </div>
+</div>
+
+<!-- 🏆 LEADERBOARD -->
+<div class="screen" id="leaderboard-screen" style="overflow-y:auto">
+  <div class="w-full px-4 py-6" style="max-width:560px">
+    <div class="text-center mb-4">
+      <div class="font-game text-2xl font-black neon-text mb-1" style="color:var(--c-yellow)">🏆 อันดับคะแนน</div>
+      <div class="text-sm text-gray-400">Top 20 นักวิทยาศาสตร์จิ๋ว</div>
+    </div>
+    <div class="glass p-4 mb-4">
+      <div id="lb-loading" class="text-center text-gray-400 py-8">⏳ กำลังโหลด...</div>
+      <div id="lb-table" style="display:none">
+        <table class="w-full text-sm">
+          <thead>
+            <tr class="text-gray-400 text-xs border-b border-white/10">
+              <th class="text-left pb-2">อันดับ</th>
+              <th class="text-left pb-2">ชื่อ</th>
+              <th class="text-left pb-2">ชั้น</th>
+              <th class="text-right pb-2">คะแนน</th>
+            </tr>
+          </thead>
+          <tbody id="lb-body"></tbody>
+        </table>
+      </div>
+    </div>
+    <div class="flex gap-3">
+      <button class="btn-primary btn-secondary flex-1" onclick="showScreen('menu-screen')">← กลับ</button>
+      <button class="btn-primary flex-1" onclick="loadLeaderboard()">🔄 รีเฟรช</button>
+    </div>
+  </div>
+</div>
+
+<!-- 🔒 ADMIN LOGIN -->
+<div class="screen" id="admin-login-screen">
+  <div class="glass p-6 mx-4 w-full" style="max-width:360px">
+    <div class="text-center mb-4">
+      <div class="text-3xl mb-1">🔒</div>
+      <div class="font-bold text-lg">เข้าสู่ระบบครู</div>
+    </div>
+    <input id="admin-user" type="text" placeholder="Username" 
+      class="w-full bg-white/10 border border-white/20 rounded-xl px-4 py-3 text-white mb-2 outline-none focus:border-cyan-400">
+    <input id="admin-pass" type="password" placeholder="Password"
+      class="w-full bg-white/10 border border-white/20 rounded-xl px-4 py-3 text-white mb-2 outline-none focus:border-cyan-400">
+    <div id="admin-error" class="text-red-400 text-xs mb-2" style="display:none">Username หรือ Password ไม่ถูกต้อง</div>
+    <div class="flex gap-2">
+      <button class="btn-primary btn-secondary flex-1" onclick="showScreen('menu-screen')">← กลับ</button>
+      <button class="btn-primary flex-1" onclick="adminLogin()">เข้าสู่ระบบ</button>
+    </div>
+  </div>
+</div>
+
+<!-- 📊 ADMIN DASHBOARD -->
+<div class="screen" id="admin-screen" style="overflow-y:auto">
+  <div class="w-full px-4 py-4" style="max-width:640px">
+    <div class="flex items-center justify-between mb-4">
+      <div>
+        <div class="font-game text-lg font-bold" style="color:var(--c-accent)">📊 Admin Dashboard</div>
+        <div class="text-xs text-gray-400">จัดการคะแนนนักเรียน</div>
+      </div>
+      <button class="btn-primary btn-secondary text-sm px-3 py-2" onclick="adminLogout()">ออก</button>
+    </div>
+    <!-- Search + Clear -->
+    <div class="flex gap-2 mb-3">
+      <input id="admin-search" type="text" placeholder="🔍 ค้นหาชื่อ..."
+        oninput="adminSearch(this.value)"
+        class="flex-1 bg-white/10 border border-white/20 rounded-xl px-4 py-2 text-white text-sm outline-none focus:border-cyan-400">
+      <button class="btn-primary btn-danger text-sm px-3 py-2" onclick="adminClearAll()">⚠️ ล้างทั้งหมด</button>
+    </div>
+    <!-- Table -->
+    <div class="glass overflow-hidden mb-4">
+      <div id="admin-loading" class="text-center text-gray-400 py-8">⏳ กำลังโหลด...</div>
+      <div id="admin-table-wrap" style="display:none;overflow-x:auto">
+        <table class="w-full text-sm" style="min-width:420px">
+          <thead>
+            <tr class="text-gray-400 text-xs border-b border-white/10">
+              <th class="text-left px-3 py-2">ชื่อ-นามสกุล</th>
+              <th class="text-left px-3 py-2">ชั้น</th>
+              <th class="text-center px-3 py-2">เลขที่</th>
+              <th class="text-right px-3 py-2">คะแนนสูงสุด</th>
+              <th class="text-right px-3 py-2">วันที่</th>
+              <th class="px-3 py-2"></th>
+            </tr>
+          </thead>
+          <tbody id="admin-body"></tbody>
+        </table>
+      </div>
+    </div>
+    <div class="text-xs text-gray-500 text-center" id="admin-count"></div>
+  </div>
+</div>
+
+<!-- ==================== JAVASCRIPT ==================== -->
+<script>
+'use strict';
+
+// ===== CONFIG =====
+// ⚙️ ตั้งค่า URL ของ Google Apps Script ที่ deploy แล้ว
+const GAS_URL = 'YOUR_GAS_WEB_APP_URL_HERE';
+// ⚙️ Admin credentials (ควรเปลี่ยนก่อนใช้งาน)
+const ADMIN_USER = 'teacher';
+const ADMIN_PASS = 'mpsao2024';
+
+// ===== โจทย์คำถาม 10 ด่าน =====
+const QUIZ_DATA = [
+  {
+    level:1, icon:'🌳', name:'ป่าแห่งการสังเกต',
+    q:'ถ้าเด็กๆ ต้องการรู้ว่าดอกไม้ในป่ามีกลิ่นหอมหรือไม่ ควรใช้อวัยวะใดในการสังเกต?',
+    opts:['ตา','จมูก','หู'], ans:1
+  },
+  {
+    level:2, icon:'🦇', name:'ถ้ำนักจำแนก',
+    q:'สิ่งของในข้อใด ควรจัดให้อยู่ในกลุ่มเดียวกับ "สมุด และ ดินสอ"?',
+    opts:['ยางลบ','ลูกฟุตบอล','ขนมปัง'], ans:0
+  },
+  {
+    level:3, icon:'🏞️', name:'แม่น้ำแห่งการวัด',
+    q:'ถ้าต้องการวัดว่าแม่น้ำนี้กว้างแค่ไหนเพื่อสร้างสะพาน ควรใช้เครื่องมือใด?',
+    opts:['นาฬิกา','เครื่องชั่งน้ำหนัก','สายวัด / ไม้บรรทัดยาว'], ans:2
+  },
+  {
+    level:4, icon:'⛰️', name:'ภูเขาพยากรณ์',
+    q:'สังเกตเห็นท้องฟ้ามืดครึ้มและมีลมพัดแรง เด็กๆ คาดคะเนว่าจะเกิดอะไรขึ้นต่อไป?',
+    opts:['แดดออก','ฝนตก','หิมะตก'], ans:1
+  },
+  {
+    level:5, icon:'🏝️', name:'เกาะเก็บข้อมูล',
+    q:'การเดินนับจำนวนและจดบันทึกว่ามีแอปเปิลกี่ลูกบนเกาะ เรียกว่าอะไร?',
+    opts:['การรวบรวมข้อมูล','การตั้งคำถาม','การพยากรณ์'], ans:0
+  },
+  {
+    level:6, icon:'🏰', name:'ปราสาทสื่อสาร',
+    q:'เมื่อนับผลไม้เสร็จแล้ว ควรทำอย่างไรให้เพื่อนๆ เข้าใจข้อมูลของเราได้ง่ายที่สุด?',
+    opts:['เอาผลไม้ไปซ่อน','เล่าให้ตัวเองฟังคนเดียว','วาดเป็นแผนภูมิรูปภาพ'], ans:2
+  },
+  {
+    level:7, icon:'🌌', name:'สะพานนักสืบ',
+    q:'เห็น "รอยเท้าสุนัข" และ "รอยกระดูกที่ถูกแทะ" บนพื้น เด็กๆ คิดว่าเกิดอะไรขึ้นที่นี่?',
+    opts:['มีนกบินผ่านไป','มีสุนัขมากินอาหารตรงนี้','ฝนกำลังจะตก'], ans:1
+  },
+  {
+    level:8, icon:'🔬', name:'โลกแห่งการตั้งคำถาม',
+    q:'ข้อใดคือ "การตั้งคำถามทางวิทยาศาสตร์" ที่ดีที่สุดเพื่อนำไปสู่การทดลอง?',
+    opts:['ทำไมน้ำแข็งถึงละลายเมื่อโดนแดด?','วันนี้เพื่อนๆ กินข้าวกับอะไร?','ชุดนักเรียนของฉันสวยไหม?'], ans:0
+  },
+  {
+    level:9, icon:'🧪', name:'บอสนักทดลอง',
+    q:'เวลาที่เราเกิดความสงสัย "สิ่งแรก" ที่นักวิทยาศาสตร์จิ๋วควรทำคือข้อใด?',
+    opts:['สรุปผล','ทำการทดลอง','ตั้งคำถาม'], ans:2
+  },
+  {
+    level:10, icon:'⭐', name:'ผู้พิทักษ์วิทยาศาสตร์',
+    q:'ถ้าต้องสร้างเรือของเล่นเพื่อหนีออกจากเกาะโดยไม่ให้เรือจมน้ำ ควรเลือกใช้วัสดุใด?',
+    opts:['กระดาษทิชชู','ขวดพลาสติก','เศษผ้า'], ans:1
+  }
+];
+
+// ===== UTILITY =====
+/** แสดงหน้าจอตามชื่อ id */
+function showScreen(id){
+  document.querySelectorAll('.screen').forEach(s=>s.classList.remove('active'));
+  document.getElementById(id)?.classList.add('active');
+}
+/** สร้างดาว background */
+function createStars(){
+  const bg=document.getElementById('stars-bg');
+  for(let i=0;i<80;i++){
+    const s=document.createElement('div');
+    s.className='star';
+    s.style.cssText=`left:${Math.random()*100}%;top:${Math.random()*100}%;
+      animation-delay:${Math.random()*3}s;animation-duration:${2+Math.random()*3}s;
+      opacity:${0.2+Math.random()*0.8};width:${1+Math.random()*2}px;height:${1+Math.random()*2}px`;
+    bg.appendChild(s);
+  }
+}
+createStars();
+
+// ===== API CALLS =====
+/** บันทึกคะแนนลง Google Sheet */
+async function saveScore(data){
+  if(!GAS_URL||GAS_URL==='YOUR_GAS_WEB_APP_URL_HERE') return;
+  try{
+    await fetch(GAS_URL,{
+      method:'POST',
+      headers:{'Content-Type':'text/plain'},
+      body:JSON.stringify({action:'saveScore',...data})
+    });
+  }catch(e){console.warn('Save score error:',e)}
+}
+/** โหลด Leaderboard */
+async function loadLeaderboard(){
+  document.getElementById('lb-loading').style.display='';
+  document.getElementById('lb-table').style.display='none';
+  try{
+    const r=await fetch(`${GAS_URL}?action=getLeaderboard`);
+    const data=await r.json();
+    renderLeaderboard(data.rows||[]);
+  }catch(e){
+    document.getElementById('lb-loading').textContent='❌ ไม่สามารถโหลดข้อมูลได้';
+  }
+}
+/** แสดงตาราง Leaderboard */
+function renderLeaderboard(rows){
+  const tbody=document.getElementById('lb-body');
+  const curName=GameState.playerName;
+  tbody.innerHTML=rows.slice(0,20).map((r,i)=>{
+    const medal=i===0?'🥇':i===1?'🥈':i===2?'🥉':`${i+1}`;
+    const cls=r.name===curName?'self-row':'';
+    return`<tr class="${cls}">
+      <td class="px-3 py-2">${medal}</td>
+      <td class="px-3 py-2 font-bold">${r.name}</td>
+      <td class="px-3 py-2 text-gray-400">${r.class||'-'}</td>
+      <td class="px-3 py-2 text-right font-bold text-yellow-400">${r.score}</td>
+    </tr>`;
+  }).join('');
+  document.getElementById('lb-loading').style.display='none';
+  document.getElementById('lb-table').style.display='';
+}
+/** Admin Login */
+function adminLogin(){
+  const u=document.getElementById('admin-user').value;
+  const p=document.getElementById('admin-pass').value;
+  if(u===ADMIN_USER&&p===ADMIN_PASS){
+    document.getElementById('admin-error').style.display='none';
+    showScreen('admin-screen');
+    loadAdminData();
+  }else{
+    document.getElementById('admin-error').style.display='';
+  }
+}
+function adminLogout(){
+  document.getElementById('admin-user').value='';
+  document.getElementById('admin-pass').value='';
+  showScreen('menu-screen');
+}
+let _adminRows=[];
+async function loadAdminData(){
+  document.getElementById('admin-loading').style.display='';
+  document.getElementById('admin-table-wrap').style.display='none';
+  try{
+    const r=await fetch(`${GAS_URL}?action=adminGetAll&pw=${ADMIN_PASS}`);
+    const data=await r.json();
+    _adminRows=data.rows||[];
+    renderAdminTable(_adminRows);
+  }catch(e){
+    document.getElementById('admin-loading').textContent='❌ ไม่สามารถโหลดได้';
+  }
+}
+function renderAdminTable(rows){
+  const tbody=document.getElementById('admin-body');
+  tbody.innerHTML=rows.map((r,i)=>`<tr class="border-b border-white/5 hover:bg-white/5">
+    <td class="px-3 py-2 font-bold">${r.name}</td>
+    <td class="px-3 py-2 text-gray-400">${r.class||'-'}</td>
+    <td class="px-3 py-2 text-center text-gray-400">${r.no||'-'}</td>
+    <td class="px-3 py-2 text-right text-yellow-400 font-bold">${r.score}</td>
+    <td class="px-3 py-2 text-right text-gray-500 text-xs">${r.date||''}</td>
+    <td class="px-3 py-2 text-right">
+      <button onclick="adminDelete('${r.id}')" class="text-red-400 hover:text-red-300 text-lg">🗑️</button>
+    </td>
+  </tr>`).join('');
+  document.getElementById('admin-loading').style.display='none';
+  document.getElementById('admin-table-wrap').style.display='';
+  document.getElementById('admin-count').textContent=`ทั้งหมด ${rows.length} รายการ`;
+}
+function adminSearch(q){
+  const filtered=_adminRows.filter(r=>r.name.includes(q));
+  renderAdminTable(filtered);
+}
+async function adminDelete(id){
+  if(!confirm('ลบข้อมูลนี้?')) return;
+  try{
+    await fetch(GAS_URL,{method:'POST',headers:{'Content-Type':'text/plain'},
+      body:JSON.stringify({action:'deleteRow',id,pw:ADMIN_PASS})});
+    loadAdminData();
+  }catch(e){alert('เกิดข้อผิดพลาด')}
+}
+async function adminClearAll(){
+  if(!confirm('⚠️ ล้างข้อมูลทั้งหมด? ไม่สามารถกู้คืนได้!')) return;
+  if(!confirm('ยืนยันอีกครั้ง: ล้างข้อมูลทั้งหมดจริงๆ?')) return;
+  try{
+    await fetch(GAS_URL,{method:'POST',headers:{'Content-Type':'text/plain'},
+      body:JSON.stringify({action:'clearAll',pw:ADMIN_PASS})});
+    loadAdminData();
+  }catch(e){alert('เกิดข้อผิดพลาด')}
+}
+
+// ===================================================
+// ===== GAME ENGINE =================================
+// ===================================================
+
+/** สถานะเกมส่วนกลาง */
+const GameState={
+  playerName:'',playerClass:'',playerNo:'',
+  score:0,coins:0,hearts:3,level:1,
+  isRunning:false,isPaused:false,isGameOver:false,
+  distance:0,speed:4,
+  currentLane:1, // 0=ซ้าย,1=กลาง,2=ขวา
+};
+
+/** ===== GAME CONTROLLER ===== */
+const GameController={
+  /** เริ่มเกม */
+  startGame(){
+    // ตรวจสอบชื่อ
+    const name=document.getElementById('inp-name').value.trim();
+    const cls=document.getElementById('inp-class').value.trim();
+    const no=document.getElementById('inp-no').value.trim();
+    if(!name){
+      document.getElementById('reg-error').textContent='กรุณากรอกชื่อ-นามสกุล';
+      document.getElementById('reg-error').style.display='';
+      return;
+    }
+    document.getElementById('reg-error').style.display='none';
+    GameState.playerName=name;
+    GameState.playerClass=cls;
+    GameState.playerNo=no;
+    // รีเซ็ต state
+    Object.assign(GameState,{
+      score:0,coins:0,hearts:3,level:1,
+      isRunning:true,isPaused:false,isGameOver:false,
+      distance:0,speed:4,currentLane:1
+    });
+    showScreen('');// ซ่อน screen ทั้งหมด
+    document.getElementById('hud').style.display='';
+    document.getElementById('ar-container').style.display='';
+    document.getElementById('game-canvas').style.display='';
+    this._updateHUD();
+    GameEngine.start();
+    ARSystem.start();
+    InputSystem.init();
+  },
+  /** อัปเดต HUD */
+  _updateHUD(){
+    document.getElementById('hud-score').textContent=GameState.score.toLocaleString();
+    document.getElementById('hud-level').textContent=GameState.level;
+    document.getElementById('hud-coins').textContent=GameState.coins;
+    const h='❤️'.repeat(GameState.hearts)+'🖤'.repeat(Math.max(0,3-GameState.hearts));
+    document.getElementById('hud-hearts').textContent=h;
+  },
+  /** เพิ่มคะแนน */
+  addScore(pts){
+    GameState.score=Math.max(0,GameState.score+pts);
+    // Floating score text
+    GameEngine.spawnScoreText(pts>0?`+${pts}`:`${pts}`,pts>0?'#00f5d4':'#ff3860');
+    this._updateHUD();
+  },
+  /** เก็บเหรียญ */
+  collectCoin(){
+    GameState.coins++;
+    this.addScore(10);
+    this._updateHUD();
+  },
+  /** เสียหัวใจ */
+  loseHeart(){
+    GameState.hearts=Math.max(0,GameState.hearts-1);
+    this._updateHUD();
+    if(GameState.hearts<=0) this.gameOver();
+    else GameEngine.flashDamage();
+  },
+  /** แสดง Quiz */
+  showQuiz(){
+    GameState.isPaused=true;
+    const q=QUIZ_DATA[GameState.level-1];
+    document.getElementById('quiz-level-icon').textContent=q.icon;
+    document.getElementById('quiz-level-name').textContent=`Level ${q.level}: ${q.name}`;
+    document.getElementById('quiz-question').textContent=q.q;
+    const labels=['ก','ข','ค'];
+    document.getElementById('quiz-options').innerHTML=q.opts.map((o,i)=>
+      `<button class="quiz-option" onclick="GameController.answerQuiz(${i})" id="qopt-${i}">
+        <span class="font-bold mr-2" style="color:var(--c-accent)">${labels[i]}.</span>${o}
+      </button>`
+    ).join('');
+    document.getElementById('quiz-result').style.display='none';
+    document.getElementById('quiz-modal').classList.add('active');
+  },
+  /** ตอบคำถาม */
+  answerQuiz(idx){
+    const q=QUIZ_DATA[GameState.level-1];
+    const isCorrect=idx===q.ans;
+    // แสดงสีตัวเลือก
+    for(let i=0;i<3;i++){
+      const el=document.getElementById(`qopt-${i}`);
+      if(i===q.ans) el.classList.add('correct');
+      else if(i===idx&&!isCorrect) el.classList.add('wrong');
+      el.onclick=null;
+    }
+    const res=document.getElementById('quiz-result');
+    res.style.display='';
+    if(isCorrect){
+      document.getElementById('quiz-result-icon').textContent='🎉';
+      document.getElementById('quiz-result-text').textContent='เก่งมาก! ถูกต้อง!';
+      document.getElementById('quiz-result-text').style.color='var(--c-green)';
+      document.getElementById('quiz-result-desc').textContent='+100 คะแนน +200 ผ่านด่าน';
+      this.addScore(100+200);
+    }else{
+      document.getElementById('quiz-result-icon').textContent='😅';
+      document.getElementById('quiz-result-text').textContent='เกือบแล้ว! ลองใหม่นะ';
+      document.getElementById('quiz-result-text').style.color='var(--c-red)';
+      document.getElementById('quiz-result-desc').textContent='-20 คะแนน';
+      this.addScore(-20);
+    }
+    // ปิด modal หลัง 2 วินาที
+    setTimeout(()=>{
+      document.getElementById('quiz-modal').classList.remove('active');
+      if(GameState.level>=10){
+        this.gameOver(true);
+      }else{
+        GameState.level++;
+        GameState.speed=Math.min(10,4+GameState.level*0.5);
+        GameState.isPaused=false;
+        this._updateHUD();
+      }
+    },2200);
+  },
+  /** หยุดเกม */
+  pause(){
+    if(!GameState.isRunning) return;
+    GameState.isPaused=true;
+    showScreen('pause-screen');
+  },
+  /** เล่นต่อ */
+  resume(){
+    GameState.isPaused=false;
+    showScreen('');
+  },
+  /** ออกจากเกม */
+  quit(){
+    GameState.isRunning=false;
+    GameEngine.stop();
+    ARSystem.stop();
+    InputSystem.destroy();
+    document.getElementById('hud').style.display='none';
+    document.getElementById('ar-container').style.display='none';
+    showScreen('menu-screen');
+  },
+  /** Game Over */
+  async gameOver(isWin=false){
+    GameState.isRunning=false;
+    GameState.isGameOver=true;
+    ARSystem.stop();
+    InputSystem.destroy();
+    document.getElementById('hud').style.display='none';
+    document.getElementById('ar-container').style.display='none';
+    // แสดงผล
+    document.getElementById('go-icon').textContent=isWin?'🏆':'💀';
+    document.getElementById('go-title').textContent=isWin?'ยอดเยี่ยม!':'GAME OVER';
+    document.getElementById('go-title').style.color=isWin?'var(--c-yellow)':'var(--c-red)';
+    document.getElementById('go-sub').textContent=isWin?'คุณผ่านทุกด่านแล้ว!':'ลองใหม่อีกครั้งนะ!';
+    document.getElementById('go-score').textContent=GameState.score.toLocaleString();
+    document.getElementById('go-level').textContent=GameState.level;
+    document.getElementById('go-coins').textContent=GameState.coins;
+    showScreen('gameover-screen');
+    // บันทึกคะแนน
+    await saveScore({
+      name:GameState.playerName,
+      class:GameState.playerClass,
+      no:GameState.playerNo,
+      score:GameState.score,
+      level:GameState.level
+    });
+  }
+};
+
+// ===================================================
+// ===== GAME ENGINE (Canvas Renderer) ===============
+// ===================================================
+const GameEngine=(()=>{
+  const canvas=document.getElementById('game-canvas');
+  const ctx=canvas.getContext('2d');
+  let raf=null;
+  let lastTime=0;
+  // ตัวละคร
+  const hero={x:0,y:0,w:48,h:64,lane:1,
+    isJumping:false,jumpV:0,groundY:0,
+    laneX:[0,0,0],targetX:0,
+    frame:0,frameTimer:0};
+  // วัตถุในเกม
+  let coins=[], obstacles=[], scoreTexts=[], particles=[];
+  let bgOffset=0,groundOffset=0;
+  let distanceToQuiz=300; // pixel ถึงจะแสดง quiz
+  let quizTriggered=false;
+  let damageFlash=0;
+  // สีตามด่าน
+  const LEVEL_COLORS=[
+    ['#1a4a2a','#2d7a4a'],['#1a1a3e','#2a2a5e'],['#0a2a4a','#1a5a8a'],
+    ['#3a2a0a','#6a4a1a'],['#1a4a1a','#2a7a2a'],['#3a1a0a','#6a2a0a'],
+    ['#0a0a3a','#1a1a6a'],['#2a0a3a','#4a1a5a'],['#0a2a0a','#1a5a1a'],
+    ['#3a2a0a','#6a5a0a']
+  ];
+
+  function resize(){
+    canvas.width=window.innerWidth;
+    canvas.height=window.innerHeight;
+    const cx=canvas.width/2;
+    const lw=Math.min(120,canvas.width/4);
+    hero.laneX=[cx-lw,cx,cx+lw];
+    hero.groundY=canvas.height*0.72;
+    hero.x=hero.laneX[hero.lane];
+    hero.targetX=hero.x;
+    hero.y=hero.groundY;
+  }
+
+  /** วาดพื้นหลัง */
+  function drawBG(){
+    const lvl=GameState.level-1;
+    const c=LEVEL_COLORS[lvl]||LEVEL_COLORS[0];
+    const grd=ctx.createLinearGradient(0,0,0,canvas.height);
+    grd.addColorStop(0,c[0]);
+    grd.addColorStop(1,c[1]);
+    ctx.fillStyle=grd;
+    ctx.fillRect(0,0,canvas.width,canvas.height);
+    // ดาว/พื้นหลัง
+    ctx.fillStyle='rgba(255,255,255,0.03)';
+    for(let i=0;i<30;i++){
+      const sx=((i*137+bgOffset*0.1)%canvas.width+canvas.width)%canvas.width;
+      const sy=((i*91)%canvas.height*0.6);
+      ctx.beginPath();
+      ctx.arc(sx,sy,1+i%3,0,Math.PI*2);
+      ctx.fill();
+    }
+    bgOffset+=GameState.speed*0.5;
+  }
+
+  /** วาดเลน */
+  function drawLanes(){
+    const groundY=hero.groundY;
+    const lw=Math.min(120,canvas.width/4);
+    const cx=canvas.width/2;
+    // ถนน
+    const roadGrd=ctx.createLinearGradient(0,groundY,0,canvas.height);
+    roadGrd.addColorStop(0,'rgba(30,30,60,0.9)');
+    roadGrd.addColorStop(1,'rgba(10,10,30,0.95)');
+    ctx.fillStyle=roadGrd;
+    ctx.fillRect(cx-lw*1.5-30,groundY,lw*3+60,canvas.height-groundY);
+    // เส้นเลน (เส้นประ)
+    ctx.strokeStyle='rgba(0,245,212,0.25)';
+    ctx.lineWidth=2;
+    ctx.setLineDash([20,15]);
+    ctx.lineDashOffset=-groundOffset;
+    for(const lx of [cx-lw/2,cx+lw/2]){
+      ctx.beginPath();
+      ctx.moveTo(lx,groundY);
+      ctx.lineTo(lx,canvas.height);
+      ctx.stroke();
+    }
+    ctx.setLineDash([]);
+    // ขอบถนน
+    ctx.strokeStyle='rgba(0,245,212,0.5)';
+    ctx.lineWidth=3;
+    for(const lx of [cx-lw*1.5-30,cx+lw*1.5+30]){
+      ctx.beginPath();ctx.moveTo(lx,groundY);ctx.lineTo(lx,canvas.height);ctx.stroke();
+    }
+    // เส้นขอบพื้น
+    ctx.fillStyle='rgba(0,245,212,0.3)';
+    ctx.fillRect(cx-lw*1.5-30,groundY,lw*3+60,3);
+    groundOffset=(groundOffset+GameState.speed*1.2)%35;
+  }
+
+  /** วาดตัวละคร (emoji-style canvas art) */
+  function drawHero(){
+    if(damageFlash>0&&Math.floor(damageFlash/3)%2===0){damageFlash--;return}
+    if(damageFlash>0) damageFlash--;
+    const x=hero.x, y=hero.y;
+    const w=hero.w, h=hero.h;
+    ctx.save();
+    // เงา
+    ctx.fillStyle='rgba(0,0,0,0.3)';
+    ctx.beginPath();
+    ctx.ellipse(x,hero.groundY+8,w*0.5,8,0,0,Math.PI*2);
+    ctx.fill();
+    // ตัวละคร: วาด emoji แบบ canvas
+    ctx.font=`${h}px serif`;
+    ctx.textAlign='center';
+    ctx.textBaseline='bottom';
+    // Bob animation
+    const bob=hero.isJumping?0:Math.sin(hero.frame*0.3)*2;
+    ctx.fillText('🧑‍🔬',x,y-bob+8);
+    // เอฟเฟกต์วิ่ง
+    if(!hero.isJumping){
+      ctx.font='20px serif';
+      const step=Math.sin(hero.frame*0.5)>0?'👟':'🦶';
+      ctx.fillText(step,x+(Math.sin(hero.frame*0.5)>0?-15:15),y+8);
+    }
+    ctx.restore();
+  }
+
+  /** วาดเหรียญ */
+  function drawCoins(){
+    coins.forEach(c=>{
+      ctx.save();
+      ctx.beginPath();
+      ctx.arc(c.x,c.y,14,0,Math.PI*2);
+      ctx.fillStyle='#ffd60a';
+      ctx.shadowColor='#ffd60a';
+      ctx.shadowBlur=15;
+      ctx.fill();
+      ctx.fillStyle='#b8860b';
+      ctx.lineWidth=2;
+      ctx.strokeStyle='#fff8';
+      ctx.stroke();
+      ctx.font='bold 14px sans-serif';
+      ctx.fillStyle='#fff';
+      ctx.textAlign='center';
+      ctx.textBaseline='middle';
+      ctx.fillText('🪙',c.x,c.y);
+      ctx.restore();
+    });
+  }
+
+  /** วาดสิ่งกีดขวาง */
+  function drawObstacles(){
+    obstacles.forEach(o=>{
+      ctx.save();
+      ctx.font=`${o.size||44}px serif`;
+      ctx.textAlign='center';
+      ctx.textBaseline='bottom';
+      // กล่อง glow
+      ctx.shadowColor='rgba(255,56,96,0.6)';
+      ctx.shadowBlur=20;
+      ctx.fillText(o.emoji||'📦',o.x,o.y);
+      ctx.restore();
+    });
+  }
+
+  /** วาดข้อความคะแนนลอย */
+  function drawScoreTexts(){
+    scoreTexts=scoreTexts.filter(t=>{
+      ctx.save();
+      ctx.font=`bold 24px 'Noto Sans Thai',sans-serif`;
+      ctx.fillStyle=t.color||'#00f5d4';
+      ctx.globalAlpha=t.life/30;
+      ctx.textAlign='center';
+      ctx.fillText(t.text,t.x,t.y);
+      ctx.restore();
+      t.y-=1.5; t.life--;
+      return t.life>0;
+    });
+  }
+
+  /** วาด particles */
+  function drawParticles(){
+    particles=particles.filter(p=>{
+      ctx.save();
+      ctx.beginPath();
+      ctx.arc(p.x,p.y,p.r,0,Math.PI*2);
+      ctx.fillStyle=p.color;
+      ctx.globalAlpha=p.life/20;
+      ctx.fill();
+      ctx.restore();
+      p.x+=p.vx; p.y+=p.vy; p.r*=0.9; p.life--;
+      return p.life>0;
+    });
+  }
+
+  /** สร้างเหรียญ */
+  function spawnCoin(){
+    const lw=Math.min(120,canvas.width/4);
+    const cx=canvas.width/2;
+    const lane=Math.floor(Math.random()*3);
+    const lx=[cx-lw,cx,cx+lw][lane];
+    coins.push({x:lx,y:-20,lane,speed:GameState.speed});
+  }
+
+  /** สร้างสิ่งกีดขวาง */
+  const OBSTACLE_EMOJIS=['📦','⚗️','🪨','📚','🌍','🔍','📏'];
+  function spawnObstacle(){
+    const lw=Math.min(120,canvas.width/4);
+    const cx=canvas.width/2;
+    const lane=Math.floor(Math.random()*3);
+    const lx=[cx-lw,cx,cx+lw][lane];
+    obstacles.push({
+      x:lx,y:-30,lane,
+      emoji:OBSTACLE_EMOJIS[Math.floor(Math.random()*OBSTACLE_EMOJIS.length)],
+      size:44
+    });
+  }
+
+  /** spawn score text */
+  function spawnScoreText(text,color){
+    scoreTexts.push({text,color,x:hero.x,y:hero.y-60,life:30});
+  }
+
+  /** spawn particles */
+  function spawnParticles(x,y,color,n=8){
+    for(let i=0;i<n;i++){
+      const angle=Math.random()*Math.PI*2;
+      const spd=2+Math.random()*4;
+      particles.push({x,y,vx:Math.cos(angle)*spd,vy:Math.sin(angle)*spd,
+        r:3+Math.random()*4,color,life:20});
+    }
+  }
+
+  /** เช็ค collision */
+  function checkCollisions(){
+    const hx=hero.x, hy=hero.y, hw=hero.w*0.5;
+    // เหรียญ
+    coins=coins.filter(c=>{
+      if(Math.abs(c.x-hx)<hw+10&&Math.abs(c.y-hy)<40&&!hero.isJumping){
+        GameController.collectCoin();
+        spawnParticles(c.x,c.y,'#ffd60a',6);
+        return false;
+      }
+      return true;
+    });
+    // สิ่งกีดขวาง
+    obstacles=obstacles.filter(o=>{
+      if(o.lane===hero.lane&&Math.abs(o.y-hy)<50&&!hero.isJumping){
+        GameController.loseHeart();
+        spawnParticles(o.x,o.y,'#ff3860',10);
+        return false;
+      }
+      return true;
+    });
+  }
+
+  // ตัวแปรสำหรับ spawn timer
+  let coinTimer=0,obsTimer=0,coinInterval=80,obsInterval=120;
+
+  /** Main Game Loop */
+  function loop(ts){
+    if(!GameState.isRunning){return}
+    raf=requestAnimationFrame(loop);
+    const dt=Math.min(ts-lastTime,50);
+    lastTime=ts;
+    if(GameState.isPaused) return;
+
+    ctx.clearRect(0,0,canvas.width,canvas.height);
+    drawBG();
+    drawLanes();
+
+    // อัปเดตตำแหน่งตัวละคร (Lerp)
+    hero.x+=(hero.targetX-hero.x)*0.15;
+    hero.frame++;
+
+    // กระโดด
+    if(hero.isJumping){
+      hero.jumpV+=0.6;
+      hero.y+=hero.jumpV;
+      if(hero.y>=hero.groundY){hero.y=hero.groundY;hero.isJumping=false;hero.jumpV=0}
+    }
+
+    // เลื่อนเหรียญและสิ่งกีดขวาง
+    coins.forEach(c=>{c.y+=GameState.speed*1.5});
+    obstacles.forEach(o=>{o.y+=GameState.speed*1.3});
+    coins=coins.filter(c=>c.y<canvas.height+30);
+    obstacles=obstacles.filter(o=>o.y<canvas.height+30);
+
+    // Spawn
+    coinTimer++; obsTimer++;
+    if(coinTimer>coinInterval){coinTimer=0;coinInterval=60+Math.random()*40;spawnCoin()}
+    if(obsTimer>obsInterval){obsTimer=0;obsInterval=90+Math.random()*60;if(Math.random()<0.6)spawnObstacle()}
+
+    // Collision
+    checkCollisions();
+
+    drawCoins();
+    drawObstacles();
+    drawHero();
+    drawScoreTexts();
+    drawParticles();
+
+    // วาด distance progress bar
+    drawProgressBar();
+
+    // ระยะทาง -> quiz
+    if(!quizTriggered){
+      GameState.distance+=GameState.speed;
+      if(GameState.distance>=distanceToQuiz){
+        quizTriggered=true;
+        GameController.showQuiz();
+      }
+    }
+    // damage flash overlay
+    if(damageFlash>0){
+      ctx.fillStyle=`rgba(255,56,96,${damageFlash/20*0.3})`;
+      ctx.fillRect(0,0,canvas.width,canvas.height);
+    }
+  }
+
+  /** วาด progress bar ด่าน */
+  function drawProgressBar(){
+    const W=Math.min(300,canvas.width*0.5);
+    const x=(canvas.width-W)/2;
+    const y=canvas.height-20;
+    ctx.fillStyle='rgba(255,255,255,0.1)';
+    roundRect(ctx,x,y,W,8,4);ctx.fill();
+    const pct=Math.min(1,GameState.distance/distanceToQuiz);
+    ctx.fillStyle='var(--c-accent)';
+    const grad=ctx.createLinearGradient(x,0,x+W,0);
+    grad.addColorStop(0,'#00f5d4');grad.addColorStop(1,'#8b5cf6');
+    ctx.fillStyle=grad;
+    roundRect(ctx,x,y,W*pct,8,4);ctx.fill();
+    // icon ด่าน
+    ctx.font='18px serif';
+    ctx.textAlign='left';
+    ctx.fillText(QUIZ_DATA[GameState.level-1]?.icon||'⭐',x+W*pct-9,y-4);
+  }
+  function roundRect(ctx,x,y,w,h,r){
+    ctx.beginPath();
+    ctx.roundRect(x,y,w,h,r);
+  }
+
+  return{
+    start(){
+      resize();
+      window.addEventListener('resize',resize);
+      coins=[];obstacles=[];scoreTexts=[];particles=[];
+      coinTimer=0;obsTimer=0;quizTriggered=false;
+      GameState.distance=0;damageFlash=0;
+      lastTime=performance.now();
+      raf=requestAnimationFrame(loop);
+    },
+    stop(){
+      if(raf) cancelAnimationFrame(raf);
+      window.removeEventListener('resize',resize);
+    },
+    /** เปลี่ยนเลน */
+    moveLeft(){
+      if(hero.lane>0){hero.lane--;hero.targetX=hero.laneX[hero.lane]}
+    },
+    moveRight(){
+      if(hero.lane<2){hero.lane++;hero.targetX=hero.laneX[hero.lane]}
+    },
+    jump(){
+      if(!hero.isJumping){hero.isJumping=true;hero.jumpV=-14}
+    },
+    flashDamage(){damageFlash=20},
+    spawnScoreText,
+    /** เปิด quiz ด่านถัดไป */
+    nextLevel(){
+      coins=[];obstacles=[];quizTriggered=false;
+      GameState.distance=0;
+      distanceToQuiz=Math.max(200,350-GameState.level*20);
+      coinInterval=Math.max(40,80-GameState.level*3);
+      obsInterval=Math.max(60,120-GameState.level*5);
+    }
+  };
+})();
+
+// เมื่อ nextLevel ถูกเรียกหลัง quiz
+const _origAnswerQuiz=GameController.answerQuiz.bind(GameController);
+GameController.answerQuiz=function(idx){
+  _origAnswerQuiz(idx);
+  // รีเซ็ต engine หลัง 2.2 วิ
+  setTimeout(()=>{
+    if(GameState.isRunning&&!GameState.isGameOver) GameEngine.nextLevel();
+  },2200);
+};
+
+// ===================================================
+// ===== INPUT SYSTEM ================================
+// ===================================================
+const InputSystem=(()=>{
+  let touchStartX=0,touchStartY=0;
+  const COOLDOWN=300;
+  let lastAction=0;
+  function canAct(){const n=Date.now();if(n-lastAction<COOLDOWN)return false;lastAction=n;return true}
+  function left(){if(canAct()&&GameState.isRunning&&!GameState.isPaused)GameEngine.moveLeft()}
+  function right(){if(canAct()&&GameState.isRunning&&!GameState.isPaused)GameEngine.moveRight()}
+  function jump(){if(GameState.isRunning&&!GameState.isPaused)GameEngine.jump()}
+  function onKey(e){
+    if(e.key==='ArrowLeft') left();
+    else if(e.key==='ArrowRight') right();
+    else if(e.key==='ArrowUp'||e.key===' ') jump();
+  }
+  function onTouchStart(e){
+    const t=e.touches[0];
+    touchStartX=t.clientX;touchStartY=t.clientY;
+  }
+  function onTouchEnd(e){
+    const t=e.changedTouches[0];
+    const dx=t.clientX-touchStartX;
+    const dy=t.clientY-touchStartY;
+    if(Math.abs(dx)>30||Math.abs(dy)>30){
+      if(Math.abs(dx)>Math.abs(dy)){dx<0?left():right()}
+      else if(dy<-30) jump();
+    }
+  }
+  return{
+    init(){
+      document.addEventListener('keydown',onKey);
+      document.addEventListener('touchstart',onTouchStart,{passive:true});
+      document.addEventListener('touchend',onTouchEnd,{passive:true});
+    },
+    destroy(){
+      document.removeEventListener('keydown',onKey);
+      document.removeEventListener('touchstart',onTouchStart);
+      document.removeEventListener('touchend',onTouchEnd);
+    },
+    left,right,jump
+  };
+})();
+
+// ===================================================
+// ===== AR SYSTEM (MediaPipe Hands) =================
+// ===================================================
+const ARSystem=(()=>{
+  let hands=null,camera=null,isActive=false;
+  let lastGesture='';
+  const COOLDOWN=350; let lastGestureTime=0;
+  // Lerp สำหรับ cursor
+  let cursorX=0,cursorY=0;
+
+  function canGesture(){const n=Date.now();if(n-lastGestureTime<COOLDOWN)return false;lastGestureTime=n;return true}
+
+  /** คำนวณระยะห่างระหว่าง 2 landmark */
+  function dist(a,b){
+    return Math.sqrt((a.x-b.x)**2+(a.y-b.y)**2);
+  }
+
+  /** ตรวจจับท่าทาง */
+  function detectGesture(landmarks){
+    const wrist=landmarks[0];
+    const thumb=landmarks[4];
+    const idx=landmarks[8];
+    const mid=landmarks[12];
+    const ring=landmarks[16];
+    const pinky=landmarks[20];
+    // Pinch (กระโดด)
+    const pinchDist=dist(thumb,idx);
+    if(pinchDist<0.07){return'jump'}
+    // ระยะปลายนิ้วถึงฐานมือ
+    const d8=dist(idx,wrist);
+    const d12=dist(mid,wrist);
+    const d16=dist(ring,wrist);
+    const d20=dist(pinky,wrist);
+    const avg=(d8+d12+d16+d20)/4;
+    if(avg<0.25){return'left'} // กำมือ
+    if(avg>0.38){return'right'} // กางมือ
+    return'none';
+  }
+
+  /** วาด Skeleton + Landmarks */
+  function drawHand(ctx,landmarks,w,h){
+    // Connections
+    const CONNECTIONS=[[0,1],[1,2],[2,3],[3,4],[0,5],[5,6],[6,7],[7,8],
+      [0,9],[9,10],[10,11],[11,12],[0,13],[13,14],[14,15],[15,16],
+      [0,17],[17,18],[18,19],[19,20],[5,9],[9,13],[13,17]];
+    ctx.strokeStyle='rgba(0,245,212,0.5)';
+    ctx.lineWidth=2;
+    CONNECTIONS.forEach(([a,b])=>{
+      const pa=landmarks[a],pb=landmarks[b];
+      ctx.beginPath();
+      ctx.moveTo(pa.x*w,pa.y*h);
+      ctx.lineTo(pb.x*w,pb.y*h);
+      ctx.stroke();
+    });
+    // Landmarks
+    landmarks.forEach((lm,i)=>{
+      ctx.beginPath();
+      ctx.arc(lm.x*w,lm.y*h,i===8?6:3,0,Math.PI*2);
+      ctx.fillStyle=i===8?'#ffd60a':'rgba(0,245,212,0.7)';
+      ctx.fill();
+    });
+  }
+
+  /** Callback จาก MediaPipe */
+  function onResults(results){
+    const vc=document.getElementById('ar-canvas');
+    const ctx2=vc.getContext('2d');
+    vc.width=vc.offsetWidth;vc.height=vc.offsetHeight;
+    ctx2.clearRect(0,0,vc.width,vc.height);
+    if(results.multiHandLandmarks&&results.multiHandLandmarks.length>0){
+      const lms=results.multiHandLandmarks[0];
+      drawHand(ctx2,lms,vc.width,vc.height);
+      const gest=detectGesture(lms);
+      // อัปเดต UI
+      const gNames={left:'✊ ซ้าย',right:'🖐️ ขวา',jump:'🤏 กระโดด',none:''};
+      document.getElementById('gesture-display').textContent=gNames[gest]||'';
+      document.getElementById('ar-dot').style.background='#10b981';
+      document.getElementById('ar-text').textContent='กล้องพร้อม';
+      if(gest!=='none'&&canGesture()){
+        if(gest==='left') InputSystem.left();
+        else if(gest==='right') InputSystem.right();
+        else if(gest==='jump') InputSystem.jump();
+      }
+      // Tutorial highlight
+      if(document.getElementById('ar-tutorial-screen').classList.contains('active')){
+        document.getElementById('gesture-result').textContent=gNames[gest]||'ไม่พบท่าทาง';
+        ['left','jump','right'].forEach((g,i)=>{
+          const ids=['gest-left','gest-jump','gest-right'];
+          document.getElementById(ids[i]).style.borderColor=gest===g?'var(--c-accent)':'transparent';
+        });
+      }
+    }else{
+      document.getElementById('ar-dot').style.background='#f97316';
+      document.getElementById('ar-text').textContent='ไม่พบมือ';
+      document.getElementById('gesture-display').textContent='';
+    }
+  }
+
+  async function startCamera(videoEl,canvasEl,cb){
+    try{
+      const stream=await navigator.mediaDevices.getUserMedia({video:{facingMode:'user',width:320,height:240}});
+      videoEl.srcObject=stream;
+      await videoEl.play();
+      // ตั้งขนาด canvas ให้ตรงกับ video
+      canvasEl.width=videoEl.videoWidth||320;
+      canvasEl.height=videoEl.videoHeight||240;
+      return stream;
+    }catch(e){console.warn('Camera error:',e);return null}
+  }
+
+  let tutorialHands=null,tutorialCamera=null;
+
+  return{
+    async start(){
+      if(typeof Hands==='undefined') return;
+      const video=document.getElementById('ar-video');
+      const canvas=document.getElementById('ar-canvas');
+      hands=new Hands({locateFile:f=>`https://cdn.jsdelivr.net/npm/@mediapipe/hands/${f}`});
+      hands.setOptions({maxNumHands:1,modelComplexity:0,minDetectionConfidence:0.7,minTrackingConfidence:0.5});
+      hands.onResults(onResults);
+      try{
+        const stream=await navigator.mediaDevices.getUserMedia({video:{facingMode:'user',width:320,height:240},audio:false});
+        video.srcObject=stream;
+        await video.play();
+        isActive=true;
+        camera=new Camera(video,{onFrame:async()=>{if(isActive&&hands)await hands.send({image:video})},width:320,height:240});
+        camera.start();
+      }catch(e){
+        console.warn('AR not available:',e);
+        document.getElementById('ar-dot').style.background='#6b7280';
+        document.getElementById('ar-text').textContent='ไม่ได้เปิดกล้อง';
+      }
+    },
+    stop(){
+      isActive=false;
+      const v=document.getElementById('ar-video');
+      if(v.srcObject) v.srcObject.getTracks().forEach(t=>t.stop());
+      if(camera) camera.stop();
+      hands=null; camera=null;
+    },
+    async startTutorial(){
+      if(typeof Hands==='undefined') return;
+      const video=document.getElementById('tutorial-video');
+      const canvas=document.getElementById('tutorial-canvas');
+      tutorialHands=new Hands({locateFile:f=>`https://cdn.jsdelivr.net/npm/@mediapipe/hands/${f}`});
+      tutorialHands.setOptions({maxNumHands:1,modelComplexity:0,minDetectionConfidence:0.7,minTrackingConfidence:0.5});
+      tutorialHands.onResults((r)=>{
+        const ctx2=canvas.getContext('2d');
+        canvas.width=canvas.offsetWidth; canvas.height=canvas.offsetHeight;
+        ctx2.clearRect(0,0,canvas.width,canvas.height);
+        if(r.multiHandLandmarks?.[0]){
+          drawHand(ctx2,r.multiHandLandmarks[0],canvas.width,canvas.height);
+          const g=detectGesture(r.multiHandLandmarks[0]);
+          const gNames={left:'✊ กำมือ → เดินซ้าย',right:'🖐️ กางมือ → เดินขวา',jump:'🤏 จีบนิ้ว → กระโดด',none:'...'};
+          document.getElementById('gesture-result').textContent=gNames[g]||'...';
+        }
+      });
+      try{
+        const stream=await navigator.mediaDevices.getUserMedia({video:{facingMode:'user'},audio:false});
+        video.srcObject=stream;
+        await video.play();
+        const tutCam=new Camera(video,{onFrame:async()=>{if(tutorialHands)await tutorialHands.send({image:video})},width:320,height:240});
+        tutCam.start();
+      }catch(e){console.warn('Tutorial camera:',e)}
+    }
+  };
+})();
+
+// เมื่อไปที่หน้า tutorial ให้เปิดกล้อง
+document.getElementById('ar-tutorial-screen').addEventListener('transitionend',()=>{
+  if(document.getElementById('ar-tutorial-screen').classList.contains('active'))
+    ARSystem.startTutorial();
+});
+// สังเกต class changes
+const observer=new MutationObserver(()=>{
+  if(document.getElementById('ar-tutorial-screen').classList.contains('active'))
+    ARSystem.startTutorial();
+});
+observer.observe(document.getElementById('ar-tutorial-screen'),{attributes:true,attributeFilter:['class']});
+
+// ===== LEADERBOARD mock (ถ้า GAS_URL ไม่ได้ตั้ง) =====
+const _origLoadLB=loadLeaderboard;
+window.loadLeaderboard=async function(){
+  if(!GAS_URL||GAS_URL==='YOUR_GAS_WEB_APP_URL_HERE'){
+    renderLeaderboard([
+      {name:'ด.ญ. มินตรา ใจดี',class:'ป.2/1',score:1850},
+      {name:'ด.ช. ศรัณย์ วิชัย',class:'ป.2/2',score:1620},
+      {name:'ด.ญ. พิมพ์ ตั้งมั่น',class:'ป.2/1',score:1450},
+    ]);
+    return;
+  }
+  return _origLoadLB();
+};
+</script>
+</body>
+</html>
