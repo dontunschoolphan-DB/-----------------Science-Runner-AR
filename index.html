@@ -54,19 +54,19 @@
   #hud{position:absolute;top:0;left:0;right:0;z-index:30;pointer-events:none;
     padding:8px 12px}
   /* ===== AR OVERLAY ===== */
-  #ar-container{position:absolute;bottom:0;right:0;z-index:25;
-    width:180px;height:135px;border-radius:12px;overflow:hidden;
-    border:2px solid var(--glass-border);opacity:0.85}
+  #ar-container{position:absolute;inset:0;z-index:5;
+    width:100%;height:100%;overflow:hidden;pointer-events:none}
   #ar-video{position:absolute;inset:0;width:100%;height:100%;object-fit:cover;
     transform:scaleX(-1)}
-  #ar-canvas{position:absolute;inset:0;width:100%;height:100%;transform:scaleX(-1)}
+  #ar-canvas{position:absolute;inset:0;width:100%;height:100%;transform:scaleX(-1);
+    pointer-events:none}
   /* ===== QUIZ MODAL ===== */
   #quiz-modal{position:absolute;inset:0;z-index:60;display:none;
     align-items:center;justify-content:center;background:rgba(0,0,0,0.75);
     backdrop-filter:blur(8px)}
   #quiz-modal.active{display:flex}
   /* ===== GAME CANVAS ===== */
-  #game-canvas{position:absolute;inset:0;z-index:10}
+  #game-canvas{position:absolute;inset:0;z-index:10;background:transparent}
   /* ===== BTN ===== */
   .btn-primary{background:linear-gradient(135deg,var(--c-accent),var(--c-purple));
     color:#000;font-weight:900;padding:14px 32px;border-radius:50px;border:none;
@@ -107,6 +107,9 @@
   .rank-bronze{color:#cd7f32;font-weight:700}
   .self-row{background:rgba(0,245,212,0.15);border-radius:8px}
 </style>
+<audio id="bg-music" loop preload="none">
+  <source src="https://www.image2url.com/r2/default/audio/1782110827326-3fd6efce-1b9d-48c8-94bf-cc45ec3f42e4.mp3" type="audio/mpeg">
+</audio>
 </head>
 <body>
 
@@ -144,6 +147,12 @@
     <button id="btn-pause" onclick="GameController.pause()" style="pointer-events:all"
       class="glass px-3 py-2 text-xl rounded-xl">⏸️</button>
   </div>
+  <!-- เพิ่มลงใน #hud div -->
+<div class="glass px-3 py-2 flex items-center gap-2">
+  <button id="btn-music" onclick="toggleMusic()" class="text-lg">🔊</button>
+  <input id="volume-slider" type="range" min="0" max="100" value="50" 
+    class="w-16 h-1 rounded-lg" style="cursor:pointer" oninput="setVolume(this.value)">
+</div>
   <!-- AR Status -->
   <div class="mt-1 flex items-center gap-2">
     <div id="ar-status" class="glass px-2 py-1 text-xs flex items-center gap-1">
@@ -618,6 +627,50 @@ const GameState={
   currentLane:1, // 0=ซ้าย,1=กลาง,2=ขวา
 };
 
+// ===== AUDIO SYSTEM =====
+let bgMusic = null;
+let isMusicPlaying = false;
+
+function initAudio() {
+  bgMusic = document.getElementById('bg-music');
+  bgMusic.volume = 0.5; // ตั้งค่าเริ่มต้น 50%
+}
+
+function toggleMusic() {
+  if (!bgMusic) initAudio();
+  if (isMusicPlaying) {
+    bgMusic.pause();
+    isMusicPlaying = false;
+    document.getElementById('btn-music').textContent = '🔇';
+  } else {
+    bgMusic.play().catch(e => console.warn('Music play:', e));
+    isMusicPlaying = true;
+    document.getElementById('btn-music').textContent = '🔊';
+  }
+}
+
+function setVolume(val) {
+  if (!bgMusic) initAudio();
+  bgMusic.volume = val / 100;
+}
+
+function playMusic() {
+  if (!bgMusic) initAudio();
+  if (!isMusicPlaying) {
+    bgMusic.play().catch(e => console.warn('Auto play:', e));
+    isMusicPlaying = true;
+    document.getElementById('btn-music').textContent = '🔊';
+  }
+}
+
+function pauseMusic() {
+  if (bgMusic && isMusicPlaying) {
+    bgMusic.pause();
+    isMusicPlaying = false;
+    document.getElementById('btn-music').textContent = '🔇';
+  }
+}
+
 /** ===== GAME CONTROLLER ===== */
 const GameController={
   /** เริ่มเกม */
@@ -647,6 +700,7 @@ const GameController={
     document.getElementById('game-canvas').style.display='';
     this._updateHUD();
     GameEngine.start();
+    playMusic();
     ARSystem.start();
     InputSystem.init();
   },
@@ -748,6 +802,7 @@ const GameController={
   quit(){
     GameState.isRunning=false;
     GameEngine.stop();
+    pauseMusic();
     ARSystem.stop();
     InputSystem.destroy();
     document.getElementById('hud').style.display='none';
@@ -759,6 +814,7 @@ const GameController={
     GameState.isRunning=false;
     GameState.isGameOver=true;
     ARSystem.stop();
+    pauseMusic();
     InputSystem.destroy();
     document.getElementById('hud').style.display='none';
     document.getElementById('ar-container').style.display='none';
@@ -798,7 +854,7 @@ const GameEngine=(()=>{
   // วัตถุในเกม
   let coins=[], obstacles=[], scoreTexts=[], particles=[];
   let bgOffset=0,groundOffset=0;
-  let distanceToQuiz=300; // pixel ถึงจะแสดง quiz
+  let distanceToQuiz=600; // pixel ถึงจะแสดง quiz
   let quizTriggered=false;
   let damageFlash=0;
   // สีตามด่าน
@@ -823,22 +879,14 @@ const GameEngine=(()=>{
 
   /** วาดพื้นหลัง */
   function drawBG(){
-    const lvl=GameState.level-1;
-    const c=LEVEL_COLORS[lvl]||LEVEL_COLORS[0];
-    const grd=ctx.createLinearGradient(0,0,0,canvas.height);
-    grd.addColorStop(0,c[0]);
-    grd.addColorStop(1,c[1]);
-    ctx.fillStyle=grd;
+    // เคลียร์เพื่อให้วิดีโอด้านหลังยังปรากฏ
+    ctx.clearRect(0,0,canvas.width,canvas.height);
+    // Overlay สีเข้มโปร่ง
+    const overlay=ctx.createLinearGradient(0,0,0,canvas.height);
+    overlay.addColorStop(0,'rgba(0,0,0,0.2)');
+    overlay.addColorStop(1,'rgba(0,0,0,0.45)');
+    ctx.fillStyle=overlay;
     ctx.fillRect(0,0,canvas.width,canvas.height);
-    // ดาว/พื้นหลัง
-    ctx.fillStyle='rgba(255,255,255,0.03)';
-    for(let i=0;i<30;i++){
-      const sx=((i*137+bgOffset*0.1)%canvas.width+canvas.width)%canvas.width;
-      const sy=((i*91)%canvas.height*0.6);
-      ctx.beginPath();
-      ctx.arc(sx,sy,1+i%3,0,Math.PI*2);
-      ctx.fill();
-    }
     bgOffset+=GameState.speed*0.5;
   }
 
@@ -848,11 +896,11 @@ const GameEngine=(()=>{
     const lw=Math.min(120,canvas.width/4);
     const cx=canvas.width/2;
     // ถนน
-    const roadGrd=ctx.createLinearGradient(0,groundY,0,canvas.height);
-    roadGrd.addColorStop(0,'rgba(30,30,60,0.9)');
-    roadGrd.addColorStop(1,'rgba(10,10,30,0.95)');
+    const roadGrd=ctx.createLinearGradient(0,0,0,canvas.height);
+    roadGrd.addColorStop(0,'rgba(30,30,60,0.95)');
+    roadGrd.addColorStop(1,'rgba(10,10,30,0.9)');
     ctx.fillStyle=roadGrd;
-    ctx.fillRect(cx-lw*1.5-30,groundY,lw*3+60,canvas.height-groundY);
+    ctx.fillRect(cx-lw*1.5-30,0,lw*3+60,canvas.height);
     // เส้นเลน (เส้นประ)
     ctx.strokeStyle='rgba(0,245,212,0.25)';
     ctx.lineWidth=2;
@@ -860,7 +908,7 @@ const GameEngine=(()=>{
     ctx.lineDashOffset=-groundOffset;
     for(const lx of [cx-lw/2,cx+lw/2]){
       ctx.beginPath();
-      ctx.moveTo(lx,groundY);
+      ctx.moveTo(lx,0);
       ctx.lineTo(lx,canvas.height);
       ctx.stroke();
     }
@@ -869,11 +917,8 @@ const GameEngine=(()=>{
     ctx.strokeStyle='rgba(0,245,212,0.5)';
     ctx.lineWidth=3;
     for(const lx of [cx-lw*1.5-30,cx+lw*1.5+30]){
-      ctx.beginPath();ctx.moveTo(lx,groundY);ctx.lineTo(lx,canvas.height);ctx.stroke();
+      ctx.beginPath();ctx.moveTo(lx,0);ctx.lineTo(lx,canvas.height);ctx.stroke();
     }
-    // เส้นขอบพื้น
-    ctx.fillStyle='rgba(0,245,212,0.3)';
-    ctx.fillRect(cx-lw*1.5-30,groundY,lw*3+60,3);
     groundOffset=(groundOffset+GameState.speed*1.2)%35;
   }
 
@@ -935,6 +980,7 @@ const GameEngine=(()=>{
       ctx.font=`${o.size||44}px serif`;
       ctx.textAlign='center';
       ctx.textBaseline='bottom';
+      ctx.fillStyle='#fff';
       // กล่อง glow
       ctx.shadowColor='rgba(255,56,96,0.6)';
       ctx.shadowBlur=20;
@@ -1035,7 +1081,7 @@ const GameEngine=(()=>{
   }
 
   // ตัวแปรสำหรับ spawn timer
-  let coinTimer=0,obsTimer=0,coinInterval=80,obsInterval=120;
+  let coinTimer=0,obsTimer=0,coinInterval=45,obsInterval=180;
 
   /** Main Game Loop */
   function loop(ts){
@@ -1068,8 +1114,8 @@ const GameEngine=(()=>{
 
     // Spawn
     coinTimer++; obsTimer++;
-    if(coinTimer>coinInterval){coinTimer=0;coinInterval=60+Math.random()*40;spawnCoin()}
-    if(obsTimer>obsInterval){obsTimer=0;obsInterval=90+Math.random()*60;if(Math.random()<0.6)spawnObstacle()}
+    if(coinTimer>coinInterval){coinTimer=0;coinInterval=40+Math.random()*30;spawnCoin()}
+    if(obsTimer>obsInterval){obsTimer=0;obsInterval=150+Math.random()*120;if(Math.random()<0.5)spawnObstacle()}
 
     // Collision
     checkCollisions();
@@ -1151,9 +1197,9 @@ const GameEngine=(()=>{
     nextLevel(){
       coins=[];obstacles=[];quizTriggered=false;
       GameState.distance=0;
-      distanceToQuiz=Math.max(200,350-GameState.level*20);
-      coinInterval=Math.max(40,80-GameState.level*3);
-      obsInterval=Math.max(60,120-GameState.level*5);
+      distanceToQuiz=Math.max(400,600-GameState.level*15);
+      coinInterval=Math.max(30,45-GameState.level*2);
+      obsInterval=Math.max(90,180-GameState.level*3);
     }
   };
 })();
@@ -1165,7 +1211,7 @@ GameController.answerQuiz=function(idx){
   // รีเซ็ต engine หลัง 2.2 วิ
   setTimeout(()=>{
     if(GameState.isRunning&&!GameState.isGameOver) GameEngine.nextLevel();
-  },2200);
+  },10000);
 };
 
 // ===================================================
@@ -1219,6 +1265,8 @@ const ARSystem=(()=>{
   let hands=null,camera=null,isActive=false;
   let lastGesture='';
   const COOLDOWN=350; let lastGestureTime=0;
+  const FRAME_INTERVAL=120; let lastFrameTime=0; let isSending=false;
+  let tutorialLastFrameTime=0; let tutorialSending=false;
   // Lerp สำหรับ cursor
   let cursorX=0,cursorY=0;
 
@@ -1279,7 +1327,6 @@ const ARSystem=(()=>{
   function onResults(results){
     const vc=document.getElementById('ar-canvas');
     const ctx2=vc.getContext('2d');
-    vc.width=vc.offsetWidth;vc.height=vc.offsetHeight;
     ctx2.clearRect(0,0,vc.width,vc.height);
     if(results.multiHandLandmarks&&results.multiHandLandmarks.length>0){
       const lms=results.multiHandLandmarks[0];
@@ -1336,8 +1383,19 @@ const ARSystem=(()=>{
         const stream=await navigator.mediaDevices.getUserMedia({video:{facingMode:'user',width:320,height:240},audio:false});
         video.srcObject=stream;
         await video.play();
+        canvas.width=canvas.offsetWidth;
+        canvas.height=canvas.offsetHeight;
         isActive=true;
-        camera=new Camera(video,{onFrame:async()=>{if(isActive&&hands)await hands.send({image:video})},width:320,height:240});
+        camera=new Camera(video,{onFrame:async()=>{
+          if(!isActive||!hands) return;
+          const now=Date.now();
+          if(isSending || now - lastFrameTime < FRAME_INTERVAL) return;
+          lastFrameTime = now;
+          isSending = true;
+          try{ await hands.send({image:video}) }
+          catch(e){ console.warn('AR send error:', e) }
+          finally{ isSending = false; }
+        },width:320,height:240});
         camera.start();
       }catch(e){
         console.warn('AR not available:',e);
@@ -1373,7 +1431,16 @@ const ARSystem=(()=>{
         const stream=await navigator.mediaDevices.getUserMedia({video:{facingMode:'user'},audio:false});
         video.srcObject=stream;
         await video.play();
-        const tutCam=new Camera(video,{onFrame:async()=>{if(tutorialHands)await tutorialHands.send({image:video})},width:320,height:240});
+        const tutCam=new Camera(video,{onFrame:async()=>{
+          if(!tutorialHands) return;
+          const now=Date.now();
+          if(tutorialSending || now - tutorialLastFrameTime < FRAME_INTERVAL) return;
+          tutorialLastFrameTime = now;
+          tutorialSending = true;
+          try{ await tutorialHands.send({image:video}) }
+          catch(e){ console.warn('Tutorial AR send error:', e) }
+          finally{ tutorialSending = false; }
+        },width:320,height:240});
         tutCam.start();
       }catch(e){console.warn('Tutorial camera:',e)}
     }
