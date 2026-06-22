@@ -508,7 +508,7 @@ createStars();
 // ===== API CALLS =====
 /** บันทึกคะแนนลง Google Sheet */
 async function saveScore(data){
-  if(!GAS_URL||GAS_URL==='https://script.google.com/macros/s/AKfycbxX6c2KDoB_oxbx6sIHuSfnhkelcM-dop_J41EtOwg6qkjHJdDHomkrQPkD8TmMDBR8/exec') return;
+  if(!GAS_URL) return;
   try{
     await fetch(GAS_URL,{
       method:'POST',
@@ -1462,7 +1462,7 @@ observer.observe(document.getElementById('ar-tutorial-screen'),{attributes:true,
 // ===== LEADERBOARD mock (ถ้า GAS_URL ไม่ได้ตั้ง) =====
 const _origLoadLB=loadLeaderboard;
 window.loadLeaderboard=async function(){
-  if(!GAS_URL||GAS_URL==='https://script.google.com/macros/s/AKfycbxX6c2KDoB_oxbx6sIHuSfnhkelcM-dop_J41EtOwg6qkjHJdDHomkrQPkD8TmMDBR8/exec'){
+  if(!GAS_URL){
     renderLeaderboard([
       {name:'ด.ญ. มินตรา ใจดี',class:'ป.2/1',score:1850},
       {name:'ด.ช. ศรัณย์ วิชัย',class:'ป.2/2',score:1620},
