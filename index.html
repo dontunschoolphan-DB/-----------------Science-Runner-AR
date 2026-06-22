@@ -417,7 +417,7 @@
 
 // ===== CONFIG =====
 // ⚙️ ตั้งค่า URL ของ Google Apps Script ที่ deploy แล้ว
-const GAS_URL = 'YOUR_GAS_WEB_APP_URL_HERE';
+const GAS_URL = 'https://script.google.com/macros/s/AKfycbxX6c2KDoB_oxbx6sIHuSfnhkelcM-dop_J41EtOwg6qkjHJdDHomkrQPkD8TmMDBR8/exec';
 // ⚙️ Admin credentials (ควรเปลี่ยนก่อนใช้งาน)
 const ADMIN_USER = 'teacher';
 const ADMIN_PASS = 'mpsao2024';
@@ -499,7 +499,7 @@ createStars();
 // ===== API CALLS =====
 /** บันทึกคะแนนลง Google Sheet */
 async function saveScore(data){
-  if(!GAS_URL||GAS_URL==='YOUR_GAS_WEB_APP_URL_HERE') return;
+  if(!GAS_URL||GAS_URL==='https://script.google.com/macros/s/AKfycbxX6c2KDoB_oxbx6sIHuSfnhkelcM-dop_J41EtOwg6qkjHJdDHomkrQPkD8TmMDBR8/exec') return;
   try{
     await fetch(GAS_URL,{
       method:'POST',
@@ -1395,7 +1395,7 @@ observer.observe(document.getElementById('ar-tutorial-screen'),{attributes:true,
 // ===== LEADERBOARD mock (ถ้า GAS_URL ไม่ได้ตั้ง) =====
 const _origLoadLB=loadLeaderboard;
 window.loadLeaderboard=async function(){
-  if(!GAS_URL||GAS_URL==='YOUR_GAS_WEB_APP_URL_HERE'){
+  if(!GAS_URL||GAS_URL==='https://script.google.com/macros/s/AKfycbxX6c2KDoB_oxbx6sIHuSfnhkelcM-dop_J41EtOwg6qkjHJdDHomkrQPkD8TmMDBR8/exec'){
     renderLeaderboard([
       {name:'ด.ญ. มินตรา ใจดี',class:'ป.2/1',score:1850},
       {name:'ด.ช. ศรัณย์ วิชัย',class:'ป.2/2',score:1620},
