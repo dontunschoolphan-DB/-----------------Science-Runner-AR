@@ -357,6 +357,7 @@
     <div class="flex gap-3">
       <button class="btn-primary btn-secondary flex-1" onclick="showScreen('menu-screen')">← กลับ</button>
       <button class="btn-primary flex-1" onclick="loadLeaderboard()">🔄 รีเฟรช</button>
+      <button class="btn-primary btn-secondary flex-1" onclick="saveScoreTest()">✉️ ทดสอบบันทึก</button>
     </div>
   </div>
 </div>
@@ -510,23 +511,50 @@ createStars();
 async function saveScore(data){
   if(!GAS_URL) return;
   try{
-    await fetch(GAS_URL,{
+    const r = await fetch(GAS_URL,{
       method:'POST',
-      headers:{'Content-Type':'text/plain'},
+      headers:{'Content-Type':'application/json'},
       body:JSON.stringify({action:'saveScore',...data})
     });
-  }catch(e){console.warn('Save score error:',e)}
+    let json=null;
+    try{ json = await r.json(); }catch(e){}
+    console.log('saveScore response', json);
+    return json;
+  }catch(e){
+    console.warn('Save score error:',e);
+    return {error: e && e.message ? e.message : String(e)};
+  }
 }
 /** โหลด Leaderboard */
 async function loadLeaderboard(){
-  document.getElementById('lb-loading').style.display='';
-  document.getElementById('lb-table').style.display='none';
+  const loadingEl = document.getElementById('lb-loading');
+  const tableEl = document.getElementById('lb-table');
+  loadingEl.style.display='';
+  tableEl.style.display='none';
+  loadingEl.textContent='⏳ กำลังโหลด...';
   try{
     const r=await fetch(`${GAS_URL}?action=getLeaderboard`);
     const data=await r.json();
+    console.log('loadLeaderboard response', data);
     renderLeaderboard(data.rows||[]);
   }catch(e){
-    document.getElementById('lb-loading').textContent='❌ ไม่สามารถโหลดข้อมูลได้';
+    console.error('loadLeaderboard error', e);
+    loadingEl.textContent=`❌ ไม่สามารถโหลดข้อมูล: ${e && e.message ? e.message : e}`;
+  }
+}
+
+async function saveScoreTest(){
+  const loadingEl = document.getElementById('lb-loading');
+  const tableEl = document.getElementById('lb-table');
+  loadingEl.style.display='';
+  tableEl.style.display='none';
+  loadingEl.textContent='🔁 กำลังบันทึกทดสอบ...';
+  try{
+    const res = await saveScore({name:'ทดสอบจากเบราว์เซอร์',class:'ทดสอบ',score:111});
+    console.log('saveScoreTest result', res);
+    loadingEl.textContent = res && res.status ? `✅ บันทึก: ${res.status}` : '✅ บันทึกสำเร็จ';
+  }catch(e){
+    loadingEl.textContent = `❌ บันทึกไม่สำเร็จ: ${e && e.message ? e.message : e}`;
   }
 }
 /** แสดงตาราง Leaderboard */
