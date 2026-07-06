@@ -241,16 +241,11 @@
       </div>
     </div>
     <!-- คำอธิบายท่า -->
-    <div class="grid grid-cols-3 gap-2 mb-4">
+    <div class="grid grid-cols-2 gap-2 mb-4">
       <div class="glass p-3 text-center" id="gest-left">
         <div class="text-3xl mb-1">✊</div>
         <div class="text-xs font-bold" style="color:var(--c-accent)">กำมือ</div>
         <div class="text-xs text-gray-400">เดินซ้าย</div>
-      </div>
-      <div class="glass p-3 text-center" id="gest-jump">
-        <div class="text-3xl mb-1">🤏</div>
-        <div class="text-xs font-bold text-yellow-400">จีบนิ้ว</div>
-        <div class="text-xs text-gray-400">กระโดด</div>
       </div>
       <div class="glass p-3 text-center" id="gest-right">
         <div class="text-3xl mb-1">🖐️</div>
@@ -876,8 +871,7 @@ const GameEngine=(()=>{
   let lastTime=0;
   // ตัวละคร
   const hero={x:0,y:0,w:48,h:64,lane:1,
-    isJumping:false,jumpV:0,groundY:0,
-    laneX:[0,0,0],targetX:0,
+    groundY:0,laneX:[0,0,0],targetX:0,
     frame:0,frameTimer:0};
   // วัตถุในเกม
   let coins=[], obstacles=[], scoreTexts=[], particles=[];
@@ -967,14 +961,12 @@ const GameEngine=(()=>{
     ctx.textAlign='center';
     ctx.textBaseline='bottom';
     // Bob animation
-    const bob=hero.isJumping?0:Math.sin(hero.frame*0.3)*2;
+    const bob=Math.sin(hero.frame*0.3)*2;
     ctx.fillText('🧑‍🔬',x,y-bob+8);
     // เอฟเฟกต์วิ่ง
-    if(!hero.isJumping){
-      ctx.font='20px serif';
-      const step=Math.sin(hero.frame*0.5)>0?'👟':'🦶';
-      ctx.fillText(step,x+(Math.sin(hero.frame*0.5)>0?-15:15),y+8);
-    }
+    ctx.font='20px serif';
+    const step=Math.sin(hero.frame*0.5)>0?'👟':'🦶';
+    ctx.fillText(step,x+(Math.sin(hero.frame*0.5)>0?-15:15),y+8);
     ctx.restore();
   }
 
@@ -1090,7 +1082,7 @@ const GameEngine=(()=>{
     const hx=hero.x, hy=hero.y, hw=hero.w*0.5;
     // เหรียญ
     coins=coins.filter(c=>{
-      if(Math.abs(c.x-hx)<hw+10&&Math.abs(c.y-hy)<40&&!hero.isJumping){
+      if(Math.abs(c.x-hx)<hw+10&&Math.abs(c.y-hy)<40){
         GameController.collectCoin();
         spawnParticles(c.x,c.y,'#ffd60a',6);
         return false;
@@ -1099,7 +1091,7 @@ const GameEngine=(()=>{
     });
     // สิ่งกีดขวาง
     obstacles=obstacles.filter(o=>{
-      if(o.lane===hero.lane&&Math.abs(o.y-hy)<50&&!hero.isJumping){
+      if(o.lane===hero.lane&&Math.abs(o.y-hy)<50){
         GameController.loseHeart();
         spawnParticles(o.x,o.y,'#ff3860',10);
         return false;
@@ -1127,12 +1119,8 @@ const GameEngine=(()=>{
     hero.x+=(hero.targetX-hero.x)*0.15;
     hero.frame++;
 
-    // กระโดด
-    if(hero.isJumping){
-      hero.jumpV+=0.6;
-      hero.y+=hero.jumpV;
-      if(hero.y>=hero.groundY){hero.y=hero.groundY;hero.isJumping=false;hero.jumpV=0}
-    }
+    // jumping removed — hero always stays on groundY
+    hero.y = hero.groundY;
 
     // เลื่อนเหรียญและสิ่งกีดขวาง
     coins.forEach(c=>{c.y+=GameState.speed*1.5});
@@ -1216,9 +1204,7 @@ const GameEngine=(()=>{
     moveRight(){
       if(hero.lane<2){hero.lane++;hero.targetX=hero.laneX[hero.lane]}
     },
-    jump(){
-      if(!hero.isJumping){hero.isJumping=true;hero.jumpV=-14}
-    },
+    
     flashDamage(){damageFlash=20},
     spawnScoreText,
     /** เปิด quiz ด่านถัดไป */
@@ -1252,11 +1238,10 @@ const InputSystem=(()=>{
   function canAct(){const n=Date.now();if(n-lastAction<COOLDOWN)return false;lastAction=n;return true}
   function left(){if(canAct()&&GameState.isRunning&&!GameState.isPaused)GameEngine.moveLeft()}
   function right(){if(canAct()&&GameState.isRunning&&!GameState.isPaused)GameEngine.moveRight()}
-  function jump(){if(GameState.isRunning&&!GameState.isPaused)GameEngine.jump()}
+  
   function onKey(e){
     if(e.key==='ArrowLeft') left();
     else if(e.key==='ArrowRight') right();
-    else if(e.key==='ArrowUp'||e.key===' ') jump();
   }
   function onTouchStart(e){
     const t=e.touches[0];
@@ -1267,8 +1252,7 @@ const InputSystem=(()=>{
     const dx=t.clientX-touchStartX;
     const dy=t.clientY-touchStartY;
     if(Math.abs(dx)>30||Math.abs(dy)>30){
-      if(Math.abs(dx)>Math.abs(dy)){dx<0?left():right()}
-      else if(dy<-30) jump();
+      if(Math.abs(dx)>Math.abs(dy)) { dx<0? left() : right(); }
     }
   }
   return{
@@ -1282,7 +1266,7 @@ const InputSystem=(()=>{
       document.removeEventListener('touchstart',onTouchStart);
       document.removeEventListener('touchend',onTouchEnd);
     },
-    left,right,jump
+    left,right
   };
 })();
 
@@ -1313,9 +1297,7 @@ const ARSystem=(()=>{
     const mid=landmarks[12];
     const ring=landmarks[16];
     const pinky=landmarks[20];
-    // Pinch (กระโดด)
-    const pinchDist=dist(thumb,idx);
-    if(pinchDist<0.07){return'jump'}
+    
     // ระยะปลายนิ้วถึงฐานมือ
     const d8=dist(idx,wrist);
     const d12=dist(mid,wrist);
@@ -1361,20 +1343,19 @@ const ARSystem=(()=>{
       drawHand(ctx2,lms,vc.width,vc.height);
       const gest=detectGesture(lms);
       // อัปเดต UI
-      const gNames={left:'✊ ซ้าย',right:'🖐️ ขวา',jump:'🤏 กระโดด',none:''};
+      const gNames={left:'✊ ซ้าย',right:'🖐️ ขวา',none:''};
       document.getElementById('gesture-display').textContent=gNames[gest]||'';
       document.getElementById('ar-dot').style.background='#10b981';
       document.getElementById('ar-text').textContent='กล้องพร้อม';
       if(gest!=='none'&&canGesture()){
         if(gest==='left') InputSystem.left();
         else if(gest==='right') InputSystem.right();
-        else if(gest==='jump') InputSystem.jump();
       }
       // Tutorial highlight
       if(document.getElementById('ar-tutorial-screen').classList.contains('active')){
         document.getElementById('gesture-result').textContent=gNames[gest]||'ไม่พบท่าทาง';
-        ['left','jump','right'].forEach((g,i)=>{
-          const ids=['gest-left','gest-jump','gest-right'];
+        ['left','right'].forEach((g,i)=>{
+          const ids=['gest-left','gest-right'];
           document.getElementById(ids[i]).style.borderColor=gest===g?'var(--c-accent)':'transparent';
         });
       }
@@ -1451,7 +1432,7 @@ const ARSystem=(()=>{
         if(r.multiHandLandmarks?.[0]){
           drawHand(ctx2,r.multiHandLandmarks[0],canvas.width,canvas.height);
           const g=detectGesture(r.multiHandLandmarks[0]);
-          const gNames={left:'✊ กำมือ → เดินซ้าย',right:'🖐️ กางมือ → เดินขวา',jump:'🤏 จีบนิ้ว → กระโดด',none:'...'};
+          const gNames={left:'✊ กำมือ → เดินซ้าย',right:'🖐️ กางมือ → เดินขวา',none:'...'};
           document.getElementById('gesture-result').textContent=gNames[g]||'...';
         }
       });
