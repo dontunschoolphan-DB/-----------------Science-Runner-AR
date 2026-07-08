@@ -504,17 +504,20 @@ createStars();
 // ===== API CALLS =====
 /** บันทึกคะแนนลง Google Sheet */
 async function saveScore(data){
-  if(!GAS_URL) return;
+  if(!GAS_URL) return {error:'no_gas_url'};
   try{
     const r = await fetch(GAS_URL,{
       method:'POST',
       headers:{'Content-Type':'application/json'},
       body:JSON.stringify({action:'saveScore',...data})
     });
+    const text = await r.text();
+    console.log('saveScore response status', r.status, r.statusText, 'body:', text);
     let json=null;
-    try{ json = await r.json(); }catch(e){}
-    console.log('saveScore response', json);
-    return json;
+    try{ json = JSON.parse(text); }catch(e){
+      console.warn('saveScore response parse failed', e);
+    }
+    return json || {error:'invalid_response',status:r.status,statusText:r.statusText,body:text};
   }catch(e){
     console.warn('Save score error:',e);
     return {error: e && e.message ? e.message : String(e)};
@@ -547,7 +550,14 @@ async function saveScoreTest(){
   try{
     const res = await saveScore({name:'ทดสอบจากเบราว์เซอร์',class:'ทดสอบ',score:111});
     console.log('saveScoreTest result', res);
-    loadingEl.textContent = res && res.status ? `✅ บันทึก: ${res.status}` : '✅ บันทึกสำเร็จ';
+    if(res?.error){
+      loadingEl.textContent = `❌ บันทึกไม่สำเร็จ: ${res.error}`;
+      if(res.body) loadingEl.textContent += ` | ${res.body}`;
+    } else if(res?.status){
+      loadingEl.textContent = `✅ บันทึก: ${res.status}`;
+    } else {
+      loadingEl.textContent = '✅ บันทึกสำเร็จ';
+    }
   }catch(e){
     loadingEl.textContent = `❌ บันทึกไม่สำเร็จ: ${e && e.message ? e.message : e}`;
   }
